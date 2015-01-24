@@ -19,6 +19,95 @@
 
 @implementation StrokePanelUIView
 
+//const for generating UIBezierPath for strokes
+#define MITERLIMIT      4
+#define LINEWIDTH       10
+#define SCALE_CONST     2.6
+#define LINECAPSTYLE    kCGLineCapRound
+#define LINEJOINSTYLE   kCGLineJoinRound
+
+
+
+
+#pragma mark - property
+
+- (void)setStrokesInPrimitive:(NSArray *)strokesInPrimitive {
+    _strokesInPrimitive = strokesInPrimitive;
+    self.strokesInUIBezierPath = [self transformStrokesToUIBezierPathFrom:strokesInPrimitive];
+    //_strokesInPrimitive = nil; // if you are sensitive about memory
+}
+
+- (NSArray *)transformStrokesToUIBezierPathFrom:(NSArray *)strokesInPrimitive {
+    /* when the ViewController set strokesInPrimitive (compressed representation of UIBezierPath of strokes)
+     * the StrokePanel UI View automatically transform it to UIBezierPath
+     * and store it private @property strokesInUIBezierPath
+     * waiting for drawRect to call
+     *
+     *  compressed repr of strokes          | repr of NSArray of UIBezierPath
+     *                                      |
+     * strokesInPrimitive                   |   strokesInUIBezierPath
+     * = @[ stroke1, stroke2,  ... ]        |   = @[UIBezierPath1, UIBezierPath2 ... ]
+     *                                      |
+     * stroke = @[ curve1, curve2 ... ]     |   UIBezierPath = @[moveToPoint/cubicCurve/quadCurve/linearCurve ]
+     *                                      |
+     * curve = @[point, ctrlPt1 ctrlPt2]    |   curve =  moveToPoint:
+     *       | @[point, ctrlPt]             |           |addCurveToPoint:controlPoint1:controlPoint2
+     *       | @[point]                     |           |addQuadCurveToPoint
+     *                                      |           |addLineToPoint:
+     * point = @[x, y];                     |
+     *                                      |   point = CGMakePoint(x, y)
+     */
+    NSMutableArray *newStrokesInUIBezierPath = [[NSMutableArray alloc] init];
+    
+    // iterate all strokes
+    for (NSArray *stroke in strokesInPrimitive) {
+        
+        // construct path for current stroke
+        UIBezierPath *path = [UIBezierPath bezierPath];
+        
+        // add starting point to uibezierpath
+        [path moveToPoint: CGPointMake([stroke[0][0][0] floatValue] * SCALE_CONST,
+                                       [stroke[0][0][1] floatValue] * SCALE_CONST)];
+        
+        // add other points to uibezierpath
+        for (int i = 1; i < [stroke count]; i++) {
+            
+            NSArray *strk = stroke[i];
+            int len = [strk count];
+            
+            if (len == 3) { // Cubic Bezier Path with 1 curve point + 2 control points
+                [path addCurveToPoint: CGPointMake([strk[0][0] floatValue]*SCALE_CONST,
+                                                   [strk[0][1] floatValue]*SCALE_CONST)
+                        controlPoint1: CGPointMake([strk[1][0] floatValue]*SCALE_CONST,
+                                                   [strk[1][1] floatValue]*SCALE_CONST)
+                        controlPoint2: CGPointMake([strk[2][0] floatValue]*SCALE_CONST,
+                                                   [strk[2][1] floatValue]*SCALE_CONST)];
+            } else if (len == 1) { // Line
+                [path addLineToPoint:CGPointMake([strk[0][0] floatValue]*SCALE_CONST,
+                                                 [strk[0][1] floatValue]*SCALE_CONST)];
+            } else if (len == 2) { // Quadratic curve with one control point
+                [path addQuadCurveToPoint:CGPointMake([strk[0][0] floatValue]*SCALE_CONST,
+                                                      [strk[0][1] floatValue]*SCALE_CONST)
+                             controlPoint:CGPointMake([strk[1][0] floatValue]*SCALE_CONST,
+                                                      [strk[1][1] floatValue]*SCALE_CONST)];
+            }
+            
+        }
+        // rest of configurations
+        path.miterLimit = MITERLIMIT;
+        path.lineCapStyle = LINECAPSTYLE;
+        path.lineJoinStyle = LINEJOINSTYLE;
+        path.lineWidth = LINEWIDTH;
+        
+        // color is set on the fly
+        
+        // add to new strokes in
+        [newStrokesInUIBezierPath addObject:path];
+        
+    }
+    return newStrokesInUIBezierPath;
+}
+
 #pragma mark - initilization code
 
 - (void)awakeFromNib {
@@ -29,6 +118,7 @@
     // initialize page number
     // might save and restore it using userdefault dictionary later
     self.pageNumber = 0;
+    self.strokesInPrimitive = [self thirdChar];//will trigger transformStrokesToUIBezierPathFrom:
     
     UISwipeGestureRecognizer *lsgr =
         [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeLeft:)];
@@ -59,12 +149,12 @@
 #define MINVAL 0
 
 - (void)swipeLeft:(UISwipeGestureRecognizer *)gesture {
-    self.pageNumber++;
+    //self.pageNumber++;
     NSLog(@"left %d", self.pageNumber);
 }
 
 - (void)swipeRight:(UISwipeGestureRecognizer *)gesture {
-    self.pageNumber--;
+    //self.pageNumber--;
     NSLog(@"right %d", self.pageNumber);
 }
 
@@ -98,245 +188,134 @@
 #pragma mark - draw methods
 
 - (void)drawRect:(CGRect)rect {
-    NSLog(@"ok");
-    if (self.pageNumber == 1) {
-        [self draw1];
-    } else if (self.pageNumber == 2) {
-        [self draw2];
-    } else if (self.pageNumber == 3) {
-        [self draw3];
+    
+    for (UIBezierPath *strokePath in self.strokesInUIBezierPath) {
+        [[UIColor blackColor] setStroke];
+        [strokePath stroke];
     }
+    
+    NSLog(@"draw");
 }
 
 
-- (void)draw1 {
-    UIColor* color0 = [UIColor blackColor];
-    CGFloat c = 2.6;
-    
-    UIBezierPath* bezierPath = [UIBezierPath bezierPath];
-    [bezierPath moveToPoint: CGPointMake(59*c, 10.85*c)];
-    [bezierPath addCurveToPoint: CGPointMake(57.43*c, 13.93*c) controlPoint1: CGPointMake(58.88*c, 12.12*c) controlPoint2: CGPointMake(58.15*c, 13.21*c)];
-    [bezierPath addCurveToPoint: CGPointMake(32.25*c, 30.75*c) controlPoint1: CGPointMake(51.16*c, 20.23*c) controlPoint2: CGPointMake(43.5*c, 25.37*c)];
-    bezierPath.miterLimit = 4;
-    bezierPath.lineCapStyle = kCGLineCapRound;
-    bezierPath.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezierPath.lineWidth = 8;
-    [bezierPath stroke];
-    
-    
-    //// Bezier 2 Drawing
-    UIBezierPath* bezier2Path = [UIBezierPath bezierPath];
-    [bezier2Path moveToPoint: CGPointMake(29.25*c, 31.36*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(31.45*c, 35.18*c) controlPoint1: CGPointMake(30.32*c, 32.43*c) controlPoint2: CGPointMake(31.2*c, 33.83*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(35.61*c, 61.24*c) controlPoint1: CGPointMake(32.99*c, 43.5*c) controlPoint2: CGPointMake(34.97*c, 56.35*c)];
-    bezier2Path.miterLimit = 4;
-    bezier2Path.lineCapStyle = kCGLineCapRound;
-    bezier2Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier2Path.lineWidth = 8;
-    [bezier2Path stroke];
-    
-    
-    //// Bezier 3 Drawing
-    UIBezierPath* bezier3Path = [UIBezierPath bezierPath];
-    [bezier3Path moveToPoint: CGPointMake(35.78*c, 38.37*c)];
-    [bezier3Path addCurveToPoint: CGPointMake(41.47*c, 38.24*c) controlPoint1: CGPointMake(37.87*c, 38.5*c) controlPoint2: CGPointMake(39.26*c, 38.51*c)];
-    [bezier3Path addCurveToPoint: CGPointMake(74.66*c, 32.66*c) controlPoint1: CGPointMake(51.94*c, 36.95*c) controlPoint2: CGPointMake(64.74*c, 34.63*c)];
-    [bezier3Path addCurveToPoint: CGPointMake(82.24*c, 32.18*c) controlPoint1: CGPointMake(77.31*c, 32.13*c) controlPoint2: CGPointMake(79.53*c, 31.83*c)];
-    bezier3Path.miterLimit = 4;
-    bezier3Path.lineCapStyle = kCGLineCapRound;
-    bezier3Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier3Path.lineWidth = 8;
-    [bezier3Path stroke];
-    
-    
-    //// Bezier 4 Drawing
-    UIBezierPath* bezier4Path = [UIBezierPath bezierPath];
-    [bezier4Path moveToPoint: CGPointMake(67.63*c, 38.35*c)];
-    [bezier4Path addCurveToPoint: CGPointMake(68.43*c, 42.57*c) controlPoint1: CGPointMake(68.58*c, 39.3*c) controlPoint2: CGPointMake(68.7*c, 40.64*c)];
-    [bezier4Path addCurveToPoint: CGPointMake(66.26*c, 58.25*c) controlPoint1: CGPointMake(67.62*c, 48.25*c) controlPoint2: CGPointMake(67.5*c, 50.12*c)];
-    bezier4Path.miterLimit = 4;
-    bezier4Path.lineCapStyle = kCGLineCapRound;
-    bezier4Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier4Path.lineWidth = 8;
-    [bezier4Path stroke];
-    
-    
-    //// Bezier 5 Drawing
-    UIBezierPath* bezier5Path = [UIBezierPath bezierPath];
-    [bezier5Path moveToPoint: CGPointMake(13.5*c, 63.23*c)];
-    [bezier5Path addCurveToPoint: CGPointMake(24.24*c, 63.66*c) controlPoint1: CGPointMake(16.91*c, 64.39*c) controlPoint2: CGPointMake(20.72*c, 64.06*c)];
-    [bezier5Path addCurveToPoint: CGPointMake(81.99*c, 58*c) controlPoint1: CGPointMake(37.47*c, 62.14*c) controlPoint2: CGPointMake(63.5*c, 58.5*c)];
-    [bezier5Path addCurveToPoint: CGPointMake(94*c, 58.74*c) controlPoint1: CGPointMake(86.03*c, 57.89*c) controlPoint2: CGPointMake(90.07*c, 57.94*c)];
-    bezier5Path.miterLimit = 4;
-    bezier5Path.lineCapStyle = kCGLineCapRound;
-    bezier5Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier5Path.lineWidth = 8;
-    [bezier5Path stroke];
-    
-    
-    //// Bezier 6 Drawing
-    UIBezierPath* bezier6Path = [UIBezierPath bezierPath];
-    [bezier6Path moveToPoint: CGPointMake(52.94*c, 63.44*c)];
-    [bezier6Path addCurveToPoint: CGPointMake(54.56*c, 67.89*c) controlPoint1: CGPointMake(54.12*c, 64.62*c) controlPoint2: CGPointMake(54.56*c, 66.25*c)];
-    [bezier6Path addCurveToPoint: CGPointMake(54.6*c, 90.38*c) controlPoint1: CGPointMake(54.56*c, 72.62*c) controlPoint2: CGPointMake(54.6*c, 83.12*c)];
-    bezier6Path.miterLimit = 4;
-    bezier6Path.lineCapStyle = kCGLineCapRound;
-    bezier6Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier6Path.lineWidth = 8;
-    [bezier6Path stroke];
-    
-    
-    //// Bezier 7 Drawing
-    UIBezierPath* bezier7Path = [UIBezierPath bezierPath];
-    [bezier7Path moveToPoint: CGPointMake(25.9*c, 76.38*c)];
-    [bezier7Path addCurveToPoint: CGPointMake(26.93*c, 79.46*c) controlPoint1: CGPointMake(26.76*c, 77.24*c) controlPoint2: CGPointMake(27*c, 78.5*c)];
-    [bezier7Path addCurveToPoint: CGPointMake(25.97*c, 92.59*c) controlPoint1: CGPointMake(26.64*c, 83.51*c) controlPoint2: CGPointMake(26.54*c, 85.11*c)];
-    [bezier7Path addCurveToPoint: CGPointMake(27.74*c, 95.35*c) controlPoint1: CGPointMake(25.75*c, 95.5*c) controlPoint2: CGPointMake(26.14*c, 95.64*c)];
-    [bezier7Path addCurveToPoint: CGPointMake(82.04*c, 89.07*c) controlPoint1: CGPointMake(41.62*c, 92.87*c) controlPoint2: CGPointMake(66.37*c, 89.37*c)];
-    bezier7Path.miterLimit = 4;
-    bezier7Path.lineCapStyle = kCGLineCapRound;
-    bezier7Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier7Path.lineWidth = 8;
-    [bezier7Path stroke];
-    
-    
-    //// Bezier 8 Drawing
-    UIBezierPath* bezier8Path = [UIBezierPath bezierPath];
-    [bezier8Path moveToPoint: CGPointMake(84.59*c, 70.75*c)];
-    [bezier8Path addCurveToPoint: CGPointMake(85.35*c, 74.34*c) controlPoint1: CGPointMake(85.67*c, 71.83*c) controlPoint2: CGPointMake(85.5*c, 73.37*c)];
-    [bezier8Path addCurveToPoint: CGPointMake(83.27*c, 87.21*c) controlPoint1: CGPointMake(84.79*c, 78.09*c) controlPoint2: CGPointMake(84.19*c, 82.04*c)];
-    [bezier8Path addCurveToPoint: CGPointMake(81.97*c, 94.73*c) controlPoint1: CGPointMake(82.87*c, 89.46*c) controlPoint2: CGPointMake(82.43*c, 91.94*c)];
-    bezier8Path.miterLimit = 4;
-    bezier8Path.lineCapStyle = kCGLineCapRound;
-    bezier8Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier8Path.lineWidth = 8;
-    [bezier8Path stroke];
-    
-    
-    
 
+
+- (NSArray *)thirdChar{
+    return
+    @[
+      @[
+          @[@[@53.36,@12.25]],
+          @[@[@56.75,@32.12],@[@56.84,@21.36],@[@56.75,@28]]
+          ],
+      @[
+          @[@[@18.75,@35.36]],
+          @[@[@28.98,@35.64],@[@21.99,@36.32],@[@25.66,@36.01]],
+          @[@[@84.88,@30.9],@[@44.88,@33.88],@[@70.7,@31.59]],
+          @[@[@95.76,@31.66],@[@88.26,@30.73],@[@92.76,@30.63]]
+          ],
+      @[
+          @[@[@45.17,@37.53]],
+          @[@[@46.36,@42.17],@[@46.25,@38.61],@[@46.36,@40.16]],
+          @[@[@26.31,@97],@[@46.36,@60.55],@[@42.5,@86]]
+          ],
+      @[
+          @[@[@64.52,@35.33]],
+          @[@[@66.28,@40.35],@[@65.5,@36.25],@[@66.28,@37.32]],
+          @[@[@66.27,@89.47],@[@66.28,@58],@[@66.27,@84.51]],
+          @[@[@59.06,@89.97],@[@66.27,@99.86],@[@60.56,@91.22]]
+          ],
+      @[
+          @[@[@30.01,@52.89]],
+          @[@[@29.54,@56.71],@[@30.1,@54.17],@[@30.1,@55.5]],
+          @[@[@14.8,@78.22],@[@26.74,@62.82],@[@21.69,@71.07]]
+          ],
+      @[
+          @[@[@78.77,@54.33]],
+          @[@[@92.56,@75.46],@[@83.64,@58.06],@[@91.35,@69.66]]
+       ]
+      ];
 }
 
-- (void)draw2 {
-    UIColor* color0 = [UIColor blackColor];
-    CGFloat c = 2.6;
-    
-    UIBezierPath* bezierPath = [UIBezierPath bezierPath];
-    [bezierPath moveToPoint: CGPointMake(41.88*c, 14.38*c)];
-    [bezierPath addCurveToPoint: CGPointMake(43.38*c, 19.5*c) controlPoint1: CGPointMake(42.88*c, 15.76*c) controlPoint2: CGPointMake(43.38*c, 17.63*c)];
-    [bezierPath addCurveToPoint: CGPointMake(14.88*c, 88.25*c) controlPoint1: CGPointMake(43.38*c, 59.63*c) controlPoint2: CGPointMake(34.26*c, 77*c)];
-    bezierPath.miterLimit = 4;
-    bezierPath.lineCapStyle = kCGLineCapRound;
-    bezierPath.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezierPath.lineWidth = 8;
-    [bezierPath stroke];
-    
-    
-    UIBezierPath* bezier2Path = [UIBezierPath bezierPath];
-    [bezier2Path moveToPoint: CGPointMake(13.5*c, 45.75*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(22.08*c, 45.09*c) controlPoint1: CGPointMake(16.38*c, 46.6*c) controlPoint2: CGPointMake(19.28*c, 45.8*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(63*c, 35.25*c) controlPoint1: CGPointMake(30.55*c, 42.95*c) controlPoint2: CGPointMake(61.96*c, 35.3*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(67.25*c, 40*c) controlPoint1: CGPointMake(65.5*c, 35.13*c) controlPoint2: CGPointMake(67.75*c, 35.75*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(60.25*c, 72.5*c) controlPoint1: CGPointMake(66.75*c, 44.25*c) controlPoint2: CGPointMake(61.75*c, 60.75*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(78.46*c, 91.87*c) controlPoint1: CGPointMake(58.02*c, 89.96*c) controlPoint2: CGPointMake(62.25*c, 91.87*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(97.73*c, 81.75*c) controlPoint1: CGPointMake(92.25*c, 91.87*c) controlPoint2: CGPointMake(97.47*c, 90.8*c)];
-    bezier2Path.miterLimit = 4;
-    bezier2Path.lineCapStyle = kCGLineCapRound;
-    bezier2Path.lineJoinStyle = kCGLineJoinRound;
-    [color0 setStroke];
-    bezier2Path.lineWidth = 8;
-    [bezier2Path stroke];
+- (NSArray *)secondChar{
+    return
+    @[//first stroke
+      @[
+          @[  @[@41.88, @14.38]],
+          @[  @[@43.38, @19.5],   @[@42.88, @15.76],  @[@43.38, @17.63]],
+          @[  @[@14.88, @88.25],  @[@42.38, @59.63],  @[@34.26, @77]]
+          ],
+      //second stroke
+      @[
+          @[  @[@13.5, @45.75]],
+          @[  @[@22.08, @45.09],   @[@16.38, @46.6],  @[@19.28, @45.8]],
+          @[  @[@63, @35.25],  @[@30.55, @42.95],  @[@61.96, @35.3]],
+          @[  @[@67.25, @40],  @[@65.5, @35.13],  @[@67.75, @35.75]],
+          @[  @[@60.25, @72.5],  @[@66.75, @44.25],  @[@61.75, @60.75]],
+          @[  @[@78.46, @91.87],  @[@58.02, @89.96],  @[@62.25, @91.87]],
+          @[  @[@97.73, @81.75],  @[@92.25, @91.87 ],  @[@97.47, @90.8]]
+          ]
+      ];
 }
 
-- (void)draw3 {
-    UIColor* color = [UIColor blackColor];
-    CGFloat c = 2.6;
-    
-
-    
-    //// Bezier Drawing
-    UIBezierPath* bezierPath = [UIBezierPath bezierPath];
-    [bezierPath moveToPoint: CGPointMake(53.36*c, 12.25*c)];
-    [bezierPath addCurveToPoint: CGPointMake(54.84*c, 16.91*c) controlPoint1: CGPointMake(54.74*c, 13.63*c) controlPoint2: CGPointMake(54.84*c, 15*c)];
-    [bezierPath addCurveToPoint: CGPointMake(54.75*c, 32.12*c) controlPoint1: CGPointMake(54.84*c, 21.36*c) controlPoint2: CGPointMake(54.75*c, 28*c)];
-    bezierPath.miterLimit = 4;
-    bezierPath.lineCapStyle = kCGLineCapRound;
-    bezierPath.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezierPath.lineWidth = 8;
-    [bezierPath stroke];
-    
-    //// Bezier 2 Drawing
-    UIBezierPath* bezier2Path = [UIBezierPath bezierPath];
-    [bezier2Path moveToPoint: CGPointMake(18.75*c, 35.36*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(28.98*c, 35.64*c) controlPoint1: CGPointMake(21.99*c, 36.32*c) controlPoint2: CGPointMake(25.66*c, 36.01*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(84.88*c, 30.9*c) controlPoint1: CGPointMake(44.88*c, 33.88*c) controlPoint2: CGPointMake(70.7*c, 31.59*c)];
-    [bezier2Path addCurveToPoint: CGPointMake(95.76*c, 31.66*c) controlPoint1: CGPointMake(88.26*c, 30.73*c) controlPoint2: CGPointMake(92.76*c, 30.63*c)];
-    bezier2Path.miterLimit = 4;
-    bezier2Path.lineCapStyle = kCGLineCapRound;
-    bezier2Path.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezier2Path.lineWidth = 8;
-    [bezier2Path stroke];
-    
-    //// Bezier 3 Drawing
-    UIBezierPath* bezier3Path = [UIBezierPath bezierPath];
-    [bezier3Path moveToPoint: CGPointMake(45.17*c, 37.53*c)];
-    [bezier3Path addCurveToPoint: CGPointMake(46.36*c, 42.17*c) controlPoint1: CGPointMake(46.25*c, 38.61*c) controlPoint2: CGPointMake(46.36*c, 40.16*c)];
-    [bezier3Path addCurveToPoint: CGPointMake(26.31*c, 97*c) controlPoint1: CGPointMake(46.36*c, 60.55*c) controlPoint2: CGPointMake(42.5*c, 86*c)];
-    bezier3Path.miterLimit = 4;
-    bezier3Path.lineCapStyle = kCGLineCapRound;
-    bezier3Path.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezier3Path.lineWidth = 8;
-    [bezier3Path stroke];
-    
-    //// Bezier 4 Drawing
-    UIBezierPath* bezier4Path = [UIBezierPath bezierPath];
-    [bezier4Path moveToPoint: CGPointMake(64.52*c, 35.33*c)];
-    [bezier4Path addCurveToPoint: CGPointMake(66.28*c, 40.35*c) controlPoint1: CGPointMake(65.5*c, 36.25*c) controlPoint2: CGPointMake(66.28*c, 37.32*c)];
-    [bezier4Path addCurveToPoint: CGPointMake(66.27*c, 89.47*c) controlPoint1: CGPointMake(66.28*c, 58*c) controlPoint2: CGPointMake(66.27*c, 84.51*c)];
-    [bezier4Path addCurveToPoint: CGPointMake(59.06*c, 89.97*c) controlPoint1: CGPointMake(66.27*c, 99.86*c) controlPoint2: CGPointMake(60.56*c, 91.22*c)];
-    bezier4Path.miterLimit = 4;
-    bezier4Path.lineCapStyle = kCGLineCapRound;
-    bezier4Path.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezier4Path.lineWidth = 8;
-    [bezier4Path stroke];
-    
-    //// Bezier 5 Drawing
-    UIBezierPath* bezier5Path = [UIBezierPath bezierPath];
-    [bezier5Path moveToPoint: CGPointMake(30.01*c, 52.89*c)];
-    [bezier5Path addCurveToPoint: CGPointMake(29.54*c, 56.71*c) controlPoint1: CGPointMake(30.1*c, 54.17*c) controlPoint2: CGPointMake(30.1*c, 55.5*c)];
-    [bezier5Path addCurveToPoint: CGPointMake(14.8*c, 78.22*c) controlPoint1: CGPointMake(26.74*c, 62.82*c) controlPoint2: CGPointMake(21.69*c, 71.07*c)];
-    bezier5Path.miterLimit = 4;
-    bezier5Path.lineCapStyle = kCGLineCapRound;
-    bezier5Path.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezier5Path.lineWidth = 8;
-    [bezier5Path stroke];
-    
-    //// Bezier 6 Drawing
-    UIBezierPath* bezier6Path = [UIBezierPath bezierPath];
-    [bezier6Path moveToPoint: CGPointMake(78.77*c, 54.33*c)];
-    [bezier6Path addCurveToPoint: CGPointMake(92.56*c, 75.46*c) controlPoint1: CGPointMake(83.64*c, 58.06*c) controlPoint2: CGPointMake(91.35*c, 69.66*c)];
-    bezier6Path.miterLimit = 4;
-    bezier6Path.lineCapStyle = kCGLineCapRound;
-    bezier6Path.lineJoinStyle = kCGLineJoinRound;
-    [color setStroke];
-    bezier6Path.lineWidth = 8;
-    [bezier6Path stroke];
-    
+- (NSArray *)firstChar{
+    return
+    @[
+      
+      @[
+          @[@[@59,@10.85]],
+          @[@[@57.43,@13.93],@[@58.88,@12.12],@[@58.15,@13.21]],
+          @[@[@32.25,@30.75],@[@51.16,@20.23],@[@43.5,@25.37]]
+          ],
+      
+      @[
+          @[@[@29.25, @31.36]],
+          @[@[@31.45, @35.18 ], @[@30.32, @32.43 ], @[@31.2, @33.83]],
+          @[@[@35.61, @61.24], @[@32.99, @43.5], @[@34.97, @56.35]]
+          ],
+      
+      @[
+          @[@[@35.78,@38.37]],
+          @[@[@41.47,@38.24],@[@37.87,@38.5],@[@39.26,@38.51]],
+          @[@[@74.66,@32.66],@[@51.94,@36.95],@[@64.74,@34.63]],
+          @[@[@82.24,@32.18],@[@77.31,@32.13],@[@79.53,@31.83]]
+          ],
+      
+      @[
+          @[@[@67.63,@38.35]],
+          @[@[@68.43,@42.57],@[@68.58,@39.3],@[@68.7,@40.64]],
+          @[@[@66.26,@58.25],@[@67.62,@48.25],@[@67.5,@50.12]]
+          ],
+      
+      @[
+          @[@[@13.5,@63.23]],
+          @[@[@24.24,@63.66],@[@16.91,@64.39],@[@20.72,@64.06]],
+          @[@[@81.99,@58],@[@37.47,@62.14],@[@63.5,@58.5]],
+          @[@[@94,@58.74],@[@86.03,@57.89],@[@90.07,@57.94]]
+          ],
+      
+      @[
+          @[@[@52.94,@63.44]],
+          @[@[@54.56,@67.89],@[@54.12,@64.62],@[@54.56,@66.25]],
+          @[@[@54.6,@90.38],@[@54.56,@72.62],@[@54.6,@83.12]]
+          ],
+      
+      @[
+          @[@[@25.9,@76.38]],
+          @[@[@26.93,@79.46],@[@26.76,@77.24],@[@27,@78.5]],
+          @[@[@25.97,@92.59],@[@26.64,@83.51],@[@26.54,@85.11]],
+          @[@[@27.74,@95.35],@[@25.75,@95.5],@[@26.14,@95.64]],
+          @[@[@82.04,@89.07],@[@41.62,@92.87],@[@66.37,@89.37]]
+          ],
+      
+      @[
+          @[@[@84.59,@70.75]],
+          @[@[@85.35,@74.34],@[@85.67,@71.83],@[@85.5,@73.37]],
+          @[@[@83.27,@87.21],@[@84.79,@78.09],@[@84.19,@82.04]],
+          @[@[@81.97,@94.73],@[@82.87,@89.46],@[@82.43,@91.94]]
+          ]
+      ];
 }
+
 
 
 @end
