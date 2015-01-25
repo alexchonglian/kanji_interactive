@@ -9,5 +9,5 @@
 #import <UIKit/UIKit.h>
 
 @interface SingleChineseCharacterViewController : UIViewController
-
+@property (strong, nonatomic) NSArray *chars;
 @end

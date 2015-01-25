@@ -10,11 +10,8 @@
 
 @interface StrokePanelUIView()
 @property (strong, nonatomic) NSArray *strokesInUIBezierPath;
-@property (nonatomic) NSInteger pageNumber;
 @property (nonatomic) NSInteger strokeIndex;
 @end
-
-
 
 
 @implementation StrokePanelUIView
@@ -27,14 +24,13 @@
 #define LINEJOINSTYLE   kCGLineJoinRound
 
 
-
-
 #pragma mark - property
 
 - (void)setStrokesInPrimitive:(NSArray *)strokesInPrimitive {
     _strokesInPrimitive = strokesInPrimitive;
     self.strokesInUIBezierPath = [self transformStrokesToUIBezierPathFrom:strokesInPrimitive];
     //_strokesInPrimitive = nil; // if you are sensitive about memory
+    self.strokeIndex = 0;
 }
 
 - (NSArray *)transformStrokesToUIBezierPathFrom:(NSArray *)strokesInPrimitive {
@@ -108,6 +104,11 @@
     return newStrokesInUIBezierPath;
 }
 
+- (void)setStrokeIndex:(NSInteger)strokeIndex {
+    _strokeIndex = strokeIndex;
+    [self setNeedsDisplay];
+}
+
 #pragma mark - initilization code
 
 - (void)awakeFromNib {
@@ -117,21 +118,12 @@
 - (void)setup {
     // initialize page number
     // might save and restore it using userdefault dictionary later
-    self.pageNumber = 0;
-    self.strokesInPrimitive = [self thirdChar];//will trigger transformStrokesToUIBezierPathFrom:
+    // self.strokesInPrimitive = [self thirdChar];//will trigger transformStrokesToUIBezierPathFrom:
     
-    UISwipeGestureRecognizer *lsgr =
-        [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeLeft:)];
-    lsgr.direction = UISwipeGestureRecognizerDirectionLeft;
-    
-    
-    UISwipeGestureRecognizer *rsgr =
-        [[UISwipeGestureRecognizer alloc] initWithTarget:self action:@selector(swipeRight:)];
-    rsgr.direction = UISwipeGestureRecognizerDirectionRight;
-    
+    UIPanGestureRecognizer *pangr =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(panning:)];
 
-    [self addGestureRecognizer:lsgr];
-    [self addGestureRecognizer:rsgr];
+    [self addGestureRecognizer:pangr];
     NSLog(@"ok");
 }
 
@@ -145,42 +137,16 @@
     return self;
 }
 
-#define MAXVAL 5
-#define MINVAL 0
-
-- (void)swipeLeft:(UISwipeGestureRecognizer *)gesture {
-    //self.pageNumber++;
-    NSLog(@"left %d", self.pageNumber);
-}
-
-- (void)swipeRight:(UISwipeGestureRecognizer *)gesture {
-    //self.pageNumber--;
-    NSLog(@"right %d", self.pageNumber);
-}
-
-#pragma mark - properties
-//@synthesize pageNumber = _pageNumber;
-
-- (void)setPageNumber:(NSInteger)pageNumber {
-    UIViewAnimationOptions flipDirection = (pageNumber > _pageNumber) ?
-    UIViewAnimationOptionTransitionFlipFromRight :
-    UIViewAnimationOptionTransitionFlipFromLeft;
-    
-    _pageNumber = pageNumber;
-    
-    //self.alpha = 0.0;
-    [UIView transitionWithView:self
-                      duration:0.3
-                       options: flipDirection
-                    animations:^{[self setNeedsDisplay];}
-                    completion:^(BOOL finished) {}];
-    /*
-    [UIView animateWithDuration:0.3
-                     animations:^{
-                         [self setNeedsDisplay];
-                         self.alpha = 1.0;
-                     }];
-    */
+- (void)panning:(UISwipeGestureRecognizer *)gesture {
+    CGPoint loc = [gesture locationInView:self];
+    if (gesture.state == UIGestureRecognizerStateChanged) {
+        int onit = [self.strokesInUIBezierPath[self.strokeIndex] containsPoint:loc] ? 1 : 0;
+        NSLog(@"yes or no %d", onit);
+    } else if (gesture.state == UIGestureRecognizerStateEnded) {
+        NSLog(@"position %f %f", loc.x, loc.y);
+        self.strokeIndex++;
+        [self setNeedsDisplay];
+    }
 }
 
 
@@ -193,128 +159,21 @@
         [[UIColor blackColor] setStroke];
         [strokePath stroke];
     }
+    [[UIColor blackColor] setStroke];
+    int idxForNextStroke = self.strokeIndex;
+    for (int i = 0; i < [self.strokesInUIBezierPath count]; i++) {
+        if (i == idxForNextStroke) {
+            [[UIColor redColor] setStroke];
+            [self.strokesInUIBezierPath[i] stroke];
+            [[UIColor grayColor] setStroke];
+        } else {
+            [self.strokesInUIBezierPath[i] stroke];
+        }
+    }
     
     NSLog(@"draw");
 }
 
-
-
-
-- (NSArray *)thirdChar{
-    return
-    @[
-      @[
-          @[@[@53.36,@12.25]],
-          @[@[@56.75,@32.12],@[@56.84,@21.36],@[@56.75,@28]]
-          ],
-      @[
-          @[@[@18.75,@35.36]],
-          @[@[@28.98,@35.64],@[@21.99,@36.32],@[@25.66,@36.01]],
-          @[@[@84.88,@30.9],@[@44.88,@33.88],@[@70.7,@31.59]],
-          @[@[@95.76,@31.66],@[@88.26,@30.73],@[@92.76,@30.63]]
-          ],
-      @[
-          @[@[@45.17,@37.53]],
-          @[@[@46.36,@42.17],@[@46.25,@38.61],@[@46.36,@40.16]],
-          @[@[@26.31,@97],@[@46.36,@60.55],@[@42.5,@86]]
-          ],
-      @[
-          @[@[@64.52,@35.33]],
-          @[@[@66.28,@40.35],@[@65.5,@36.25],@[@66.28,@37.32]],
-          @[@[@66.27,@89.47],@[@66.28,@58],@[@66.27,@84.51]],
-          @[@[@59.06,@89.97],@[@66.27,@99.86],@[@60.56,@91.22]]
-          ],
-      @[
-          @[@[@30.01,@52.89]],
-          @[@[@29.54,@56.71],@[@30.1,@54.17],@[@30.1,@55.5]],
-          @[@[@14.8,@78.22],@[@26.74,@62.82],@[@21.69,@71.07]]
-          ],
-      @[
-          @[@[@78.77,@54.33]],
-          @[@[@92.56,@75.46],@[@83.64,@58.06],@[@91.35,@69.66]]
-       ]
-      ];
-}
-
-- (NSArray *)secondChar{
-    return
-    @[//first stroke
-      @[
-          @[  @[@41.88, @14.38]],
-          @[  @[@43.38, @19.5],   @[@42.88, @15.76],  @[@43.38, @17.63]],
-          @[  @[@14.88, @88.25],  @[@42.38, @59.63],  @[@34.26, @77]]
-          ],
-      //second stroke
-      @[
-          @[  @[@13.5, @45.75]],
-          @[  @[@22.08, @45.09],   @[@16.38, @46.6],  @[@19.28, @45.8]],
-          @[  @[@63, @35.25],  @[@30.55, @42.95],  @[@61.96, @35.3]],
-          @[  @[@67.25, @40],  @[@65.5, @35.13],  @[@67.75, @35.75]],
-          @[  @[@60.25, @72.5],  @[@66.75, @44.25],  @[@61.75, @60.75]],
-          @[  @[@78.46, @91.87],  @[@58.02, @89.96],  @[@62.25, @91.87]],
-          @[  @[@97.73, @81.75],  @[@92.25, @91.87 ],  @[@97.47, @90.8]]
-          ]
-      ];
-}
-
-- (NSArray *)firstChar{
-    return
-    @[
-      
-      @[
-          @[@[@59,@10.85]],
-          @[@[@57.43,@13.93],@[@58.88,@12.12],@[@58.15,@13.21]],
-          @[@[@32.25,@30.75],@[@51.16,@20.23],@[@43.5,@25.37]]
-          ],
-      
-      @[
-          @[@[@29.25, @31.36]],
-          @[@[@31.45, @35.18 ], @[@30.32, @32.43 ], @[@31.2, @33.83]],
-          @[@[@35.61, @61.24], @[@32.99, @43.5], @[@34.97, @56.35]]
-          ],
-      
-      @[
-          @[@[@35.78,@38.37]],
-          @[@[@41.47,@38.24],@[@37.87,@38.5],@[@39.26,@38.51]],
-          @[@[@74.66,@32.66],@[@51.94,@36.95],@[@64.74,@34.63]],
-          @[@[@82.24,@32.18],@[@77.31,@32.13],@[@79.53,@31.83]]
-          ],
-      
-      @[
-          @[@[@67.63,@38.35]],
-          @[@[@68.43,@42.57],@[@68.58,@39.3],@[@68.7,@40.64]],
-          @[@[@66.26,@58.25],@[@67.62,@48.25],@[@67.5,@50.12]]
-          ],
-      
-      @[
-          @[@[@13.5,@63.23]],
-          @[@[@24.24,@63.66],@[@16.91,@64.39],@[@20.72,@64.06]],
-          @[@[@81.99,@58],@[@37.47,@62.14],@[@63.5,@58.5]],
-          @[@[@94,@58.74],@[@86.03,@57.89],@[@90.07,@57.94]]
-          ],
-      
-      @[
-          @[@[@52.94,@63.44]],
-          @[@[@54.56,@67.89],@[@54.12,@64.62],@[@54.56,@66.25]],
-          @[@[@54.6,@90.38],@[@54.56,@72.62],@[@54.6,@83.12]]
-          ],
-      
-      @[
-          @[@[@25.9,@76.38]],
-          @[@[@26.93,@79.46],@[@26.76,@77.24],@[@27,@78.5]],
-          @[@[@25.97,@92.59],@[@26.64,@83.51],@[@26.54,@85.11]],
-          @[@[@27.74,@95.35],@[@25.75,@95.5],@[@26.14,@95.64]],
-          @[@[@82.04,@89.07],@[@41.62,@92.87],@[@66.37,@89.37]]
-          ],
-      
-      @[
-          @[@[@84.59,@70.75]],
-          @[@[@85.35,@74.34],@[@85.67,@71.83],@[@85.5,@73.37]],
-          @[@[@83.27,@87.21],@[@84.79,@78.09],@[@84.19,@82.04]],
-          @[@[@81.97,@94.73],@[@82.87,@89.46],@[@82.43,@91.94]]
-          ]
-      ];
-}
 
 
 
