@@ -3,4 +3,4 @@ KanjiInteractive
 KanjiInteractive
 
 
-![Alt text](https://github.com/alexchonglian/kanji_interactive/blob/masterKanjiInteractiveV1animate.gif?raw=true "Screenshot")
+![Alt text](https://github.com/alexchonglian/kanji_interactive/blob/master/KanjiInteractiveV1animate.gif?raw=true "Screenshot")
